@@ -4,8 +4,13 @@
 
 pub use dioxus_desktop::*;
 use dioxus_lib::prelude::*;
+
+use once_cell::sync::OnceCell;
 use std::any::Any;
-use std::sync::Mutex;
+use std::sync::{Mutex, PoisonError};
+
+#[cfg(target_os = "android")]
+use jni::JavaVM;
 
 pub mod launch_bindings {
 
@@ -73,6 +78,13 @@ unsafe impl Send for BoundLaunchObjects {}
 unsafe impl Sync for BoundLaunchObjects {}
 
 static APP_OBJECTS: Mutex<Option<BoundLaunchObjects>> = Mutex::new(None);
+#[cfg(target_os = "android")]
+static JVM: OnceCell<JavaVM> = OnceCell::new();
+
+#[cfg(target_os = "android")]
+pub fn get_java_vm() -> Option<&'static JavaVM> {
+    JVM.get()
+}
 
 #[doc(hidden)]
 pub fn root() {
@@ -113,11 +125,31 @@ pub extern "C" fn start_app() {
 #[no_mangle]
 #[inline(never)]
 pub extern "C" fn JNI_OnLoad(
-    _vm: *mut libc::c_void,
+    vm: *mut jni::sys::JavaVM, // Changed type from c_void
     _reserved: *mut libc::c_void,
 ) -> jni::sys::jint {
+    // Capture the JavaVM instance. This MUST happen before any other JNI calls
+    // or any code that might panic.
+    // SAFETY: The vm pointer is guaranteed valid by the JNI spec during JNI_OnLoad.
+    let java_vm = match unsafe { JavaVM::from_raw(vm) } {
+        Ok(vm) => vm,
+        Err(e) => {
+            // Use android_log or similar if available, otherwise eprintln
+            eprintln!("Failed to create JavaVM from raw pointer: {:?}", e);
+            // Return JNI_ERR to indicate failure
+            return jni::sys::JNI_ERR;
+        }
+    };
+
+    // Store the JavaVM globally. If this fails, something is seriously wrong.
+    if JVM.set(java_vm).is_err() {
+        eprintln!("Failed to store JavaVM globally. Was JNI_OnLoad called twice?");
+        return jni::sys::JNI_ERR;
+    }
+
     // we're going to find the `main` symbol using dlsym directly and call it
     unsafe {
+        // SAFETY: We assume the rest of the original unsafe block's reasoning holds.
         let mut main_fn_ptr = libc::dlsym(libc::RTLD_DEFAULT, b"main\0".as_ptr() as _);
 
         if main_fn_ptr.is_null() {
