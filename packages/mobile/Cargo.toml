@@ -17,6 +17,7 @@ dioxus-cli-config = { workspace = true }
 libc = "0.2.170"
 once_cell = { workspace = true }
 
+
 [target.'cfg(target_os = "android")'.dependencies]
 jni = "0.21.1"
 

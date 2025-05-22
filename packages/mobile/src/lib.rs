@@ -5,6 +5,7 @@
 pub use dioxus_desktop::*;
 use dioxus_lib::prelude::*;
 
+<<<<<<< Updated upstream
 use once_cell::sync::OnceCell;
 use std::any::Any;
 use std::sync::{Mutex, PoisonError};
@@ -25,6 +26,54 @@ pub mod launch_bindings {
 
     pub fn launch_virtual_dom(_virtual_dom: VirtualDom, _desktop_config: Config) -> ! {
         todo!()
+=======
+#[cfg(target_os = "android")]
+use jni::JavaVM;
+#[cfg(target_os = "android")]
+use once_cell::sync::OnceCell;
+use std::any::Any;
+#[cfg(target_os = "android")]
+use std::sync::{Mutex, PoisonError};
+
+// / Launch via the binding API
+// pub fn launch(root: fn() -> Element) {
+//     launch_cfg(root, vec![], vec![]);
+// }
+
+// pub fn launch_cfg(
+//     root: fn() -> Element,
+//     contexts: Vec<Box<dyn Fn() -> Box<dyn Any> + Send + Sync>>,
+//     platform_config: Vec<Box<dyn Any>>,
+// ) {
+//     dioxus_desktop::launch::launch_cfg(root, contexts, platform_config);
+// }
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+#[inline(never)]
+pub extern "C" fn start_app() {
+    tao::android_binding!(
+        dev_dioxus,
+        main,
+        WryActivity,
+        wry::android_setup,
+        // dioxus_main_root_fn,
+        root,
+        tao
+    );
+    wry::android_binding!(dev_dioxus, main, wry);
+}
+
+#[cfg(target_os = "android")]
+fn load_env_file_from_session_cache() {
+    let env_file = dioxus_cli_config::android_session_cache_dir().join(".env");
+    if let Some(env_file) = std::fs::read_to_string(&env_file).ok() {
+        for line in env_file.lines() {
+            if let Some((key, value)) = line.trim().split_once('=') {
+                std::env::set_var(key, value);
+            }
+        }
+>>>>>>> Stashed changes
     }
 }
 
@@ -49,6 +98,7 @@ pub fn launch_cfg(
 
     #[cfg(not(target_os = "android"))]
     {
+<<<<<<< Updated upstream
         dioxus_desktop::launch::launch(root, contexts, platform_config);
     }
 }
@@ -68,11 +118,19 @@ pub fn launch_cfg(
 ///
 /// Todo(jon): the visibility of functions in this module is too public. Make sure to hide them before
 /// releasing 0.7.
+=======
+        dioxus_desktop::launch::launch_cfg(root, contexts, platform_config);
+    }
+}
+
+#[cfg(target_os = "android")]
+>>>>>>> Stashed changes
 struct BoundLaunchObjects {
     root: fn() -> Element,
     contexts: Vec<Box<dyn Fn() -> Box<dyn Any> + Send + Sync>>,
     platform_config: Vec<Box<dyn Any>>,
 }
+<<<<<<< Updated upstream
 
 unsafe impl Send for BoundLaunchObjects {}
 unsafe impl Sync for BoundLaunchObjects {}
@@ -87,6 +145,17 @@ pub fn get_java_vm() -> Option<&'static JavaVM> {
 }
 
 #[doc(hidden)]
+=======
+#[cfg(target_os = "android")]
+unsafe impl Send for BoundLaunchObjects {}
+#[cfg(target_os = "android")]
+unsafe impl Sync for BoundLaunchObjects {}
+#[cfg(target_os = "android")]
+static APP_OBJECTS: Mutex<Option<BoundLaunchObjects>> = Mutex::new(None);
+
+#[doc(hidden)]
+#[cfg(target_os = "android")]
+>>>>>>> Stashed changes
 pub fn root() {
     let app = APP_OBJECTS
         .lock()
@@ -100,6 +169,7 @@ pub fn root() {
         platform_config,
     } = app;
 
+<<<<<<< Updated upstream
     dioxus_desktop::launch::launch(root, contexts, platform_config);
 }
 
@@ -187,4 +257,96 @@ fn load_env_file_from_session_cache() {
             }
         }
     }
+=======
+    dioxus_desktop::launch::launch_cfg(root, contexts, platform_config);
+>>>>>>> Stashed changes
 }
+
+#[cfg(target_os = "android")]
+#[no_mangle]
+#[inline(never)]
+pub extern "C" fn JNI_OnLoad(
+    vm: *mut libc::c_void,
+    _reserved: *mut libc::c_void,
+) -> jni::sys::jint {
+    // Capture the JavaVM instance. This MUST happen before any other JNI calls
+    // or any code that might panic.
+    // SAFETY: The vm pointer is guaranteed valid by the JNI spec during JNI_OnLoad.
+    let java_vm = match unsafe { JavaVM::from_raw(vm) } {
+        Ok(vm) => vm,
+        Err(e) => {
+            // Use android_log or similar if available, otherwise eprintln
+            eprintln!("Failed to create JavaVM from raw pointer: {:?}", e);
+            // Return JNI_ERR to indicate failure
+            return jni::sys::JNI_ERR;
+        }
+    };
+
+    // Store the JavaVM globally. If this fails, something is seriously wrong.
+    if JVM.set(java_vm).is_err() {
+        eprintln!("Failed to store JavaVM globally. Was JNI_OnLoad called twice?");
+        return jni::sys::JNI_ERR;
+    }
+
+    // we're going to find the `main` symbol using dlsym directly and call it
+    unsafe {
+        let mut main_fn_ptr = libc::dlsym(libc::RTLD_DEFAULT, b"main\0".as_ptr() as _);
+
+        if main_fn_ptr.is_null() {
+            main_fn_ptr = libc::dlsym(libc::RTLD_DEFAULT, b"_main\0".as_ptr() as _);
+        }
+
+        if main_fn_ptr.is_null() {
+            panic!("Failed to find main symbol");
+        }
+
+        // Set the env vars that rust code might expect, passed off to us by the android app
+        // Doing this before main emulates the behavior of a regular executable
+        if cfg!(target_os = "android") && cfg!(debug_assertions) {
+            load_env_file_from_session_cache();
+        }
+
+        let main_fn: extern "C" fn() = std::mem::transmute(main_fn_ptr);
+        main_fn();
+    };
+
+    jni::sys::JNI_VERSION_1_6
+}
+
+#[cfg(target_os = "android")]
+static JVM: OnceCell<JavaVM> = OnceCell::new();
+
+#[cfg(target_os = "android")]
+pub fn get_java_vm() -> Option<&'static JavaVM> {
+    JVM.get()
+}
+
+// Call our `main` function to initialize the rust runtime and set the launch binding trampoline
+// #[cfg(target_os = "android")]
+// #[no_mangle]
+// #[inline(never)]
+// pub extern "C" fn JNI_OnLoad(
+//     vm: *mut jni::sys::JavaVM, // Changed type from c_void
+//     _reserved: *mut libc::c_void,
+// ) -> jni::sys::jint {
+//     // Capture the JavaVM instance. This MUST happen before any other JNI calls
+//     // or any code that might panic.
+//     // SAFETY: The vm pointer is guaranteed valid by the JNI spec during JNI_OnLoad.
+//     let java_vm = match unsafe { JavaVM::from_raw(vm) } {
+//         Ok(vm) => vm,
+//         Err(e) => {
+//             // Use android_log or similar if available, otherwise eprintln
+//             eprintln!("Failed to create JavaVM from raw pointer: {:?}", e);
+//             // Return JNI_ERR to indicate failure
+//             return jni::sys::JNI_ERR;
+//         }
+//     };
+
+//     // Store the JavaVM globally. If this fails, something is seriously wrong.
+//     if JVM.set(java_vm).is_err() {
+//         eprintln!("Failed to store JavaVM globally. Was JNI_OnLoad called twice?");
+//         return jni::sys::JNI_ERR;
+//     }
+
+//     jni::sys::JNI_VERSION_1_6
+// }

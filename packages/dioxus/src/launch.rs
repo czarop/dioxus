@@ -156,6 +156,8 @@ impl LaunchBuilder {
     #[cfg(feature = "mobile")]
     #[cfg_attr(docsrs, doc(cfg(feature = "mobile")))]
     pub fn mobile() -> LaunchBuilder {
+        println!("Mobile");
+
         LaunchBuilder {
             platform: KnownPlatform::Mobile,
             contexts: Vec::new(),
