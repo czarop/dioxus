@@ -158,7 +158,7 @@ pub fn root() {
 #[no_mangle]
 #[inline(never)]
 pub extern "C" fn JNI_OnLoad(
-    vm: *mut libc::c_void,
+    vm: *mut jni::sys::JavaVM,
     _reserved: *mut libc::c_void,
 ) -> jni::sys::jint {
     // Capture the JavaVM instance. This MUST happen before any other JNI calls
@@ -203,14 +203,6 @@ pub extern "C" fn JNI_OnLoad(
     };
 
     jni::sys::JNI_VERSION_1_6
-}
-
-#[cfg(target_os = "android")]
-static JVM: OnceCell<JavaVM> = OnceCell::new();
-
-#[cfg(target_os = "android")]
-pub fn get_java_vm() -> Option<&'static JavaVM> {
-    JVM.get()
 }
 
 // Call our `main` function to initialize the rust runtime and set the launch binding trampoline
